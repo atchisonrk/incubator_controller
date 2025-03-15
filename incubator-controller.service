@@ -1,0 +1,13 @@
+[Unit]
+Description=Raspberry Pi Incubator Controller
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/incubator_controller
+ExecStart=/bin/bash /home/pi/incubator_controller/start.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
