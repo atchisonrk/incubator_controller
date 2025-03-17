@@ -8,8 +8,11 @@ cd /home/pi/incubator_controller
 # Activate the virtual environment
 source venv/bin/activate
 
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
 # Start the Flask application
-python app.py &
+python app.py >> logs/incubator.log 2>&1 &
 
 # Log the startup
-echo "$(date): Incubator controller started" >> /home/pi/incubator_controller/logs/startup.log
+echo "$(date): Incubator controller started" >> logs/startup.log

@@ -14,8 +14,7 @@ from relay_controller import RelayController
 class HumidityController:
     """Class to control humidity for an incubator."""
     
-    def __init__(self, target_humidity=60, min_humidity=55, max_humidity=65, 
-                 humidifier_relay=2):
+    def __init__(self, target_humidity=60, min_humidity=55, max_humidity=65, humidifier_relay=2):
         """
         Initialize the humidity controller.
         
@@ -47,8 +46,9 @@ class HumidityController:
         self.current_temp = None
         self.humidifier_status = False
         self.last_reading_time = None
+        self.sensor_failure = False
         
-        # Check if hardware is properly initialized
+        # Check if all components are initialized
         self.is_initialized = self.sensor.is_connected and self.relay.is_initialized
         if self.is_initialized:
             print("Humidity controller initialized successfully")
@@ -75,6 +75,7 @@ class HumidityController:
             
         try:
             self.is_running = True
+            self.sensor_failure = False
             
             # Start control thread
             self.control_thread = threading.Thread(
@@ -120,6 +121,29 @@ class HumidityController:
             print(f"Error stopping humidity controller: {e}")
             return False
     
+    def _check_sensor_activity(self, timeout=30):
+        """
+        Check if the humidity sensor is active.
+        
+        Args:
+            timeout: Seconds to wait before considering sensor inactive (default: 30)
+            
+        Returns:
+            bool: True if sensor is active, False if inactive
+        """
+        # Use the sensor's built-in activity check
+        is_active = self.sensor.is_active(timeout)
+        
+        # Update sensor failure status
+        if not is_active and not self.sensor_failure:
+            print(f"SENSOR FAILURE DETECTED: No valid readings for {timeout} seconds")
+            self.sensor_failure = True
+        elif is_active and self.sensor_failure:
+            print("Sensor reconnected, resuming normal operation")
+            self.sensor_failure = False
+            
+        return is_active
+    
     def _control_loop(self, interval):
         """
         Internal humidity control loop.
@@ -134,48 +158,63 @@ class HumidityController:
                 
                 # Update status variables
                 with self.lock:
-                    self.current_humidity = humidity
                     self.current_temp = temp_f
+                    self.current_humidity = humidity
                     self.last_reading_time = time.time()
                 
                 # Check if humidity reading is valid
                 if humidity is None:
-                    print("Invalid humidity reading, skipping control cycle")
+                    print("Invalid humidity reading")
+                    # Check if sensor has been inactive too long
+                    if not self._check_sensor_activity():
+                        # Turn off humidifier due to sensor failure
+                        with self.lock:
+                            if self.humidifier_status:
+                                self.relay.turn_off(self.humidifier_relay)
+                                self.humidifier_status = False
+                                print("Humidifier turned OFF due to sensor failure")
                     time.sleep(interval)
                     continue
                 
-                # Humidity control logic
-                with self.lock:
-                    # If humidity is below minimum, turn on humidifier
-                    if humidity < self.min_humidity:
-                        if not self.humidifier_status:
-                            self.relay.turn_on(self.humidifier_relay)
-                            self.humidifier_status = True
-                            print(f"Humidity {humidity}% below minimum {self.min_humidity}%, humidifier ON")
-                    
-                    # If humidity is above maximum, turn off humidifier
-                    elif humidity > self.max_humidity:
-                        if self.humidifier_status:
-                            self.relay.turn_off(self.humidifier_relay)
-                            self.humidifier_status = False
-                            print(f"Humidity {humidity}% above maximum {self.max_humidity}%, humidifier OFF")
-                    
-                    # If humidity is within range but below target, turn on humidifier
-                    elif humidity < self.target_humidity:
-                        if not self.humidifier_status:
-                            self.relay.turn_on(self.humidifier_relay)
-                            self.humidifier_status = True
-                            print(f"Humidity {humidity}% within range but below target {self.target_humidity}%, humidifier ON")
-                    
-                    # If humidity is within range but above target, turn off humidifier
-                    else:
-                        if self.humidifier_status:
-                            self.relay.turn_off(self.humidifier_relay)
-                            self.humidifier_status = False
-                            print(f"Humidity {humidity}% within range but above target {self.target_humidity}%, humidifier OFF")
+                # Normal humidity control (only if no sensor failure)
+                if not self.sensor_failure:
+                    with self.lock:
+                        # If humidity is below minimum, turn on humidifier
+                        if humidity < self.min_humidity:
+                            if not self.humidifier_status:
+                                self.relay.turn_on(self.humidifier_relay)
+                                self.humidifier_status = True
+                                print(f"Humidity {humidity}% below minimum {self.min_humidity}%, humidifier ON")
+                        
+                        # If humidity is above maximum, turn off humidifier
+                        elif humidity > self.max_humidity:
+                            if self.humidifier_status:
+                                self.relay.turn_off(self.humidifier_relay)
+                                self.humidifier_status = False
+                                print(f"Humidity {humidity}% above maximum {self.max_humidity}%, humidifier OFF")
+                        
+                        # If humidity is within range but below target, keep humidifier on
+                        elif humidity < self.target_humidity:
+                            if not self.humidifier_status:
+                                self.relay.turn_on(self.humidifier_relay)
+                                self.humidifier_status = True
+                                print(f"Humidity {humidity}% within range but below target {self.target_humidity}%, humidifier ON")
+                        
+                        # If humidity is within range but above target, turn off humidifier
+                        else:
+                            if self.humidifier_status:
+                                self.relay.turn_off(self.humidifier_relay)
+                                self.humidifier_status = False
+                                print(f"Humidity {humidity}% within range but above target {self.target_humidity}%, humidifier OFF")
             
             except Exception as e:
                 print(f"Error in humidity control loop: {e}")
+                # Turn off humidifier as a precaution when an error occurs
+                with self.lock:
+                    if self.humidifier_status:
+                        self.relay.turn_off(self.humidifier_relay)
+                        self.humidifier_status = False
+                        print("Humidifier turned OFF due to error")
             
             # Wait for next control cycle
             time.sleep(interval)
@@ -196,6 +235,7 @@ class HumidityController:
                 "min_humidity": self.min_humidity,
                 "max_humidity": self.max_humidity,
                 "humidifier_status": self.humidifier_status,
+                "sensor_failure": self.sensor_failure,
                 "last_reading_time": self.last_reading_time
             }
     
@@ -237,10 +277,6 @@ class HumidityController:
             # Stop control loop if running
             if self.is_running:
                 self.stop()
-            
-            # Clean up relay controller
-            if self.relay.is_initialized:
-                self.relay.cleanup()
             
             print("Humidity controller cleaned up")
             return True

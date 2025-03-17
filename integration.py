@@ -140,12 +140,15 @@ class IncubatorSystem:
                 print(f"  Heater 1: {'ON' if temp_status['heater1_status'] else 'OFF'}")
                 print(f"  Heater 2: {'ON' if temp_status['heater2_status'] else 'OFF'}")
                 print(f"  Safety Triggered: {temp_status['safety_triggered']}")
+                print(f"  Sensor Failure: {temp_status['sensor_failure']}")
+                print(f"  Overheat Triggered: {temp_status['overheat_triggered']}")
                 
                 print("\nHumidity Control:")
                 print(f"  Enabled: {humidity_status['is_running']}")
                 print(f"  Target: {humidity_status['target_humidity']:.1f}%")
                 print(f"  Range: {humidity_status['min_humidity']:.1f}% - {humidity_status['max_humidity']:.1f}%")
                 print(f"  Humidifier: {'ON' if humidity_status['humidifier_status'] else 'OFF'}")
+                print(f"  Sensor Failure: {humidity_status['sensor_failure']}")
                 
                 print("=============================")
             
@@ -261,8 +264,10 @@ class IncubatorSystem:
                     print(f"Reading {i+1}:")
                     print(f"  Temperature: {temp_c:.2f}°C / {temp_f:.2f}°F")
                     print(f"  Humidity: {humidity:.2f}%")
+                    print(f"  Sensor active: {self.sensor.is_active()}")
                 else:
                     print(f"Reading {i+1}: Error reading sensor")
+                    print(f"  Sensor active: {self.sensor.is_active()}")
                 
                 if i < readings - 1:
                     time.sleep(interval)
@@ -271,6 +276,86 @@ class IncubatorSystem:
             return True
         except Exception as e:
             print(f"Error testing sensor: {e}")
+            return False
+    
+    def test_safety_features(self):
+        """
+        Test the safety features of the system.
+        
+        Returns:
+            bool: True if test completed successfully, False otherwise
+        """
+        if not self.is_initialized:
+            print("Incubator system not initialized")
+            return False
+            
+        try:
+            print("Testing safety features...")
+            
+            # Start temperature controller
+            self.temp_controller.start()
+            print("Temperature controller started")
+            
+            # Wait for a moment
+            time.sleep(2)
+            
+            # 1. Test sensor failure detection
+            print("\n1. Testing sensor failure detection...")
+            print("Simulating sensor failure by setting last_successful_read to a past time")
+            # Directly modify the sensor's last_successful_read time to simulate failure
+            # Note: In a real system, this would happen when the sensor becomes disconnected
+            original_time = self.sensor.last_successful_read
+            self.sensor.last_successful_read = time.time() - (self.temp_controller.sensor_timeout + 10)
+            
+            # Wait for the controller to detect the failure
+            print("Waiting for controller to detect sensor failure...")
+            time.sleep(5)
+            
+            # Check if heaters were turned off
+            temp_status = self.temp_controller.get_status()
+            if temp_status['sensor_failure'] and not temp_status['heater1_status'] and not temp_status['heater2_status']:
+                print("PASS: Sensor failure detected and heaters turned off")
+            else:
+                print("FAIL: Sensor failure not detected or heaters not turned off")
+            
+            # Restore the original time
+            self.sensor.last_successful_read = original_time
+            print("Sensor restored to normal operation")
+            time.sleep(5)
+            
+            # 2. Test overheat sensor
+            print("\n2. Testing overheat sensor...")
+            print("Simulating overheat condition by triggering the overheat callback")
+            # Directly trigger the overheat callback to simulate the sensor opening
+            self.relay._overheat_sensor_callback(self.relay.overheat_sensor_pin)
+            self.relay.overheat_triggered = True
+            
+            # Wait for the controller to detect the overheat condition
+            print("Waiting for controller to detect overheat condition...")
+            time.sleep(5)
+            
+            # Check if heaters were turned off
+            temp_status = self.temp_controller.get_status()
+            if temp_status['overheat_triggered'] and not temp_status['heater1_status'] and not temp_status['heater2_status']:
+                print("PASS: Overheat condition detected and heaters turned off")
+            else:
+                print("FAIL: Overheat condition not detected or heaters not turned off")
+            
+            # Restore normal operation
+            self.relay.overheat_triggered = False
+            self.relay._overheat_sensor_callback(self.relay.overheat_sensor_pin)
+            print("Overheat sensor restored to normal operation")
+            
+            # Stop temperature controller
+            self.temp_controller.stop()
+            print("Temperature controller stopped")
+            
+            print("Safety features test completed")
+            return True
+        except Exception as e:
+            print(f"Error testing safety features: {e}")
+            # Make sure to stop the controller
+            self.temp_controller.stop()
             return False
     
     def cleanup(self):
@@ -304,6 +389,7 @@ def main():
     parser = argparse.ArgumentParser(description='Incubator Controller Integration Test')
     parser.add_argument('--test-only', action='store_true', help='Run tests only, do not start control systems')
     parser.add_argument('--monitor-only', action='store_true', help='Monitor only, do not start control systems')
+    parser.add_argument('--safety-test', action='store_true', help='Run safety features test')
     parser.add_argument('--duration', type=int, default=60, help='Test duration in seconds (default: 60)')
     parser.add_argument('--interval', type=int, default=5, help='Monitoring interval in seconds (default: 5)')
     args = parser.parse_args()
@@ -323,44 +409,9 @@ def main():
         # Test relay system
         system.test_relay_system()
         
+        # Test safety features if requested
+        if args.safety_test:
+            system.test_safety_features()
+        
         # Start monitoring
-        system.start_monitoring(interval=args.interval)
-        
-        # Start control systems if not in test-only or monitor-only mode
-        if not args.test_only and not args.monitor_only:
-            system.start_control_systems()
-            print(f"Control systems started. Running for {args.duration} seconds...")
-        else:
-            if args.test_only:
-                print("Test-only mode. Control systems not started.")
-            else:
-                print("Monitor-only mode. Control systems not started.")
-            print(f"Monitoring for {args.duration} seconds...")
-        
-        # Run for specified duration
-        time.sleep(args.duration)
-        
-        # Stop control systems
-        if not args.test_only and not args.monitor_only:
-            system.stop_control_systems()
-        
-        # Stop monitoring
-        system.stop_monitoring()
-        
-        # Clean up
-        system.cleanup()
-        
-        print("Integration test completed successfully")
-    
-    except KeyboardInterrupt:
-        print("\nTest interrupted by user")
-        if 'system' in locals():
-            system.cleanup()
-    except Exception as e:
-        print(f"Error in integration test: {e}")
-        if 'system' in locals():
-            system.cleanup()
-
-
-if __name__ == "__main__":
-    main()
+        system.start_monitoring(inte<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>

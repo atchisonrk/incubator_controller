@@ -5,117 +5,141 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Raspberry Pi Incubator Controller</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Incubator Controller</h1>
-            <div class="status-indicator">
-                <span id="connection-status" class="connected">
-                    <i class="fas fa-wifi"></i> Connected
-                </span>
-            </div>
+            <h1>Raspberry Pi Incubator Controller</h1>
         </header>
 
         <div class="dashboard">
-            <div class="card temperature-card">
-                <div class="card-header">
-                    <h2>Temperature</h2>
-                    <div class="toggle-container">
-                        <label class="switch">
-                            <input type="checkbox" id="temp-control-toggle">
-                            <span class="slider round"></span>
-                        </label>
-                        <span class="toggle-label">Control</span>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="current-reading">
-                        <span id="current-temp">--.-</span>
-                        <span class="unit">°F</span>
-                    </div>
-                    <div class="status-indicators">
-                        <div class="indicator" id="heater1-indicator">
-                            <i class="fas fa-fire"></i> Heater 1: <span>OFF</span>
+            <div class="status-panel">
+                <h2>Current Status</h2>
+                <div class="status-grid">
+                    <div class="status-card temperature">
+                        <h3>Temperature</h3>
+                        <div class="current-value" id="current-temp">-- °F</div>
+                        <div class="target-value">Target: <span id="target-temp">{{ settings.temperature.target }}</span> °F</div>
+                        <div class="range-value">Range: <span id="min-temp">{{ settings.temperature.min }}</span> - <span id="max-temp">{{ settings.temperature.max }}</span> °F</div>
+                        <div class="safety-value">Safety Cutoff: <span id="safety-cutoff">{{ settings.temperature.safety_cutoff }}</span> °F</div>
+                        <div class="status-indicators">
+                            <div class="indicator">
+                                <span class="label">Heater 1:</span>
+                                <span class="status" id="heater1-status">OFF</span>
+                            </div>
+                            <div class="indicator">
+                                <span class="label">Heater 2:</span>
+                                <span class="status" id="heater2-status">OFF</span>
+                            </div>
                         </div>
-                        <div class="indicator" id="heater2-indicator">
-                            <i class="fas fa-fire"></i> Heater 2: <span>OFF</span>
-                        </div>
-                        <div class="indicator" id="safety-indicator">
-                            <i class="fas fa-exclamation-triangle"></i> Safety: <span>Normal</span>
-                        </div>
-                    </div>
-                    <div class="settings-form">
-                        <div class="form-group">
-                            <label for="temp-target">Target Temperature (°F):</label>
-                            <input type="number" id="temp-target" step="0.1" value="{{ settings.temp_target }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="temp-min">Minimum Temperature (°F):</label>
-                            <input type="number" id="temp-min" step="0.1" value="{{ settings.temp_min }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="temp-max">Maximum Temperature (°F):</label>
-                            <input type="number" id="temp-max" step="0.1" value="{{ settings.temp_max }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="temp-safety">Safety Cutoff (°F):</label>
-                            <input type="number" id="temp-safety" step="0.1" value="{{ settings.temp_safety }}">
+                        <div class="control-toggle">
+                            <label class="switch">
+                                <input type="checkbox" id="temp-control-toggle" {% if settings.temperature.enabled %}checked{% endif %}>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="toggle-label">Temperature Control</span>
                         </div>
                     </div>
-                </div>
-                <div class="card-footer">
-                    <button id="save-temp-settings" class="btn primary">Save Settings</button>
+
+                    <div class="status-card humidity">
+                        <h3>Humidity</h3>
+                        <div class="current-value" id="current-humidity">-- %</div>
+                        <div class="target-value">Target: <span id="target-humidity">{{ settings.humidity.target }}</span> %</div>
+                        <div class="range-value">Range: <span id="min-humidity">{{ settings.humidity.min }}</span> - <span id="max-humidity">{{ settings.humidity.max }}</span> %</div>
+                        <div class="status-indicators">
+                            <div class="indicator">
+                                <span class="label">Humidifier:</span>
+                                <span class="status" id="humidifier-status">OFF</span>
+                            </div>
+                        </div>
+                        <div class="control-toggle">
+                            <label class="switch">
+                                <input type="checkbox" id="humidity-control-toggle" {% if settings.humidity.enabled %}checked{% endif %}>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="toggle-label">Humidity Control</span>
+                        </div>
+                    </div>
+
+                    <div class="status-card safety">
+                        <h3>Safety Status</h3>
+                        <div class="safety-indicators">
+                            <div class="indicator">
+                                <span class="label">Temperature Safety:</span>
+                                <span class="status" id="temp-safety-status">OK</span>
+                            </div>
+                            <div class="indicator">
+                                <span class="label">Sensor Status:</span>
+                                <span class="status" id="sensor-status">OK</span>
+                            </div>
+                            <div class="indicator">
+                                <span class="label">Overheat Sensor:</span>
+                                <span class="status" id="overheat-status">OK</span>
+                            </div>
+                            <div class="indicator">
+                                <span class="label">Last Update:</span>
+                                <span class="status" id="last-update">--</span>
+                            </div>
+                        </div>
+                        <div class="system-controls">
+                            <button id="start-all-btn" class="btn btn-success">Start All</button>
+                            <button id="stop-all-btn" class="btn btn-danger">Stop All</button>
+                            <button id="reset-btn" class="btn btn-warning">Reset System</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="card humidity-card">
-                <div class="card-header">
-                    <h2>Humidity</h2>
-                    <div class="toggle-container">
-                        <label class="switch">
-                            <input type="checkbox" id="humidity-control-toggle">
-                            <span class="slider round"></span>
-                        </label>
-                        <span class="toggle-label">Control</span>
+            <div class="settings-panel">
+                <h2>Settings</h2>
+                <div class="settings-grid">
+                    <div class="settings-card temperature-settings">
+                        <h3>Temperature Settings</h3>
+                        <form id="temp-settings-form">
+                            <div class="form-group">
+                                <label for="temp-target">Target Temperature (°F):</label>
+                                <input type="number" id="temp-target" name="temp-target" step="0.1" value="{{ settings.temperature.target }}">
+                            </div>
+                            <div class="form-group">
+                                <label for="temp-min">Minimum Temperature (°F):</label>
+                                <input type="number" id="temp-min" name="temp-min" step="0.1" value="{{ settings.temperature.min }}">
+                            </div>
+                            <div class="form-group">
+                                <label for="temp-max">Maximum Temperature (°F):</label>
+                                <input type="number" id="temp-max" name="temp-max" step="0.1" value="{{ settings.temperature.max }}">
+                            </div>
+                            <div class="form-group">
+                                <label for="temp-safety">Safety Cutoff (°F):</label>
+                                <input type="number" id="temp-safety" name="temp-safety" step="0.1" value="{{ settings.temperature.safety_cutoff }}">
+                            </div>
+                            <div class="form-group">
+                                <label for="sensor-timeout">Sensor Timeout (seconds):</label>
+                                <input type="number" id="sensor-timeout" name="sensor-timeout" value="{{ settings.temperature.sensor_timeout }}">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Temperature Settings</button>
+                        </form>
                     </div>
-                </div>
-                <div class="card-body">
-                    <div class="current-reading">
-                        <span id="current-humidity">--.-</span>
-                        <span class="unit">%</span>
+
+                    <div class="settings-card humidity-settings">
+                        <h3>Humidity Settings</h3>
+                        <form id="humidity-settings-form">
+                            <div class="form-group">
+                                <label for="humidity-target">Target Humidity (%):</label>
+                                <input type="number" id="humidity-target" name="humidity-target" step="1" value="{{ settings.humidity.target }}">
+                            </div>
+                            <div class="form-group">
+                                <label for="humidity-min">Minimum Humidity (%):</label>
+                                <input type="number" id="humidity-min" name="humidity-min" step="1" value="{{ settings.humidity.min }}">
+                            </div>
+                            <div class="form-group">
+                                <label for="humidity-max">Maximum Humidity (%):</label>
+                                <input type="number" id="humidity-max" name="humidity-max" step="1" value="{{ settings.humidity.max }}">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Humidity Settings</button>
+                        </form>
                     </div>
-                    <div class="status-indicators">
-                        <div class="indicator" id="humidifier-indicator">
-                            <i class="fas fa-tint"></i> Humidifier: <span>OFF</span>
-                        </div>
-                    </div>
-                    <div class="settings-form">
-                        <div class="form-group">
-                            <label for="humidity-target">Target Humidity (%):</label>
-                            <input type="number" id="humidity-target" step="1" value="{{ settings.humidity_target }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="humidity-min">Minimum Humidity (%):</label>
-                            <input type="number" id="humidity-min" step="1" value="{{ settings.humidity_min }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="humidity-max">Maximum Humidity (%):</label>
-                            <input type="number" id="humidity-max" step="1" value="{{ settings.humidity_max }}">
-                        </div>
-                    </div>
-                </div>
-                <div class="card-footer">
-                    <button id="save-humidity-settings" class="btn primary">Save Settings</button>
                 </div>
             </div>
-        </div>
-
-        <div class="system-controls">
-            <button id="reset-system" class="btn danger">
-                <i class="fas fa-redo"></i> Reset System
-            </button>
         </div>
 
         <footer>

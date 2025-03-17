@@ -1,359 +1,333 @@
-// JavaScript for Incubator Controller Web Interface
+// script.js - JavaScript for Raspberry Pi Incubator Controller
 
 // DOM Elements
-const connectionStatus = document.getElementById('connection-status');
 const currentTemp = document.getElementById('current-temp');
 const currentHumidity = document.getElementById('current-humidity');
-const heater1Indicator = document.getElementById('heater1-indicator').querySelector('span');
-const heater2Indicator = document.getElementById('heater2-indicator').querySelector('span');
-const humidifierIndicator = document.getElementById('humidifier-indicator').querySelector('span');
-const safetyIndicator = document.getElementById('safety-indicator').querySelector('span');
+const heater1Status = document.getElementById('heater1-status');
+const heater2Status = document.getElementById('heater2-status');
+const humidifierStatus = document.getElementById('humidifier-status');
+const tempSafetyStatus = document.getElementById('temp-safety-status');
+const sensorStatus = document.getElementById('sensor-status');
+const overheatStatus = document.getElementById('overheat-status');
+const lastUpdate = document.getElementById('last-update');
 
 const tempControlToggle = document.getElementById('temp-control-toggle');
 const humidityControlToggle = document.getElementById('humidity-control-toggle');
 
-const tempTarget = document.getElementById('temp-target');
-const tempMin = document.getElementById('temp-min');
-const tempMax = document.getElementById('temp-max');
-const tempSafety = document.getElementById('temp-safety');
+const startAllBtn = document.getElementById('start-all-btn');
+const stopAllBtn = document.getElementById('stop-all-btn');
+const resetBtn = document.getElementById('reset-btn');
 
-const humidityTarget = document.getElementById('humidity-target');
-const humidityMin = document.getElementById('humidity-min');
-const humidityMax = document.getElementById('humidity-max');
+const tempSettingsForm = document.getElementById('temp-settings-form');
+const humiditySettingsForm = document.getElementById('humidity-settings-form');
 
-const saveTempSettings = document.getElementById('save-temp-settings');
-const saveHumiditySettings = document.getElementById('save-humidity-settings');
-const resetSystem = document.getElementById('reset-system');
-
-// Variables
-let statusUpdateInterval;
-let isConnected = true;
-let lastUpdateTime = 0;
-
-// Initialize the page
-function init() {
-    // Load initial settings
-    loadSettings();
-    
-    // Start status updates
-    startStatusUpdates();
-    
-    // Set up event listeners
-    setupEventListeners();
-}
-
-// Load settings from the server
-function loadSettings() {
-    fetch('/api/settings')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to load settings');
-            }
-            return response.json();
-        })
-        .then(settings => {
-            // Update temperature settings
-            tempTarget.value = settings.temp_target;
-            tempMin.value = settings.temp_min;
-            tempMax.value = settings.temp_max;
-            tempSafety.value = settings.temp_safety;
-            
-            // Update humidity settings
-            humidityTarget.value = settings.humidity_target;
-            humidityMin.value = settings.humidity_min;
-            humidityMax.value = settings.humidity_max;
-            
-            // Update toggle switches
-            tempControlToggle.checked = settings.temp_control_enabled;
-            humidityControlToggle.checked = settings.humidity_control_enabled;
-        })
-        .catch(error => {
-            console.error('Error loading settings:', error);
-            showConnectionError();
-        });
-}
-
-// Start periodic status updates
-function startStatusUpdates() {
-    // Update status immediately
-    updateStatus();
-    
-    // Set up interval for periodic updates
-    statusUpdateInterval = setInterval(updateStatus, 5000);
-}
-
-// Update status from the server
-function updateStatus() {
-    fetch('/api/status')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to get status');
-            }
-            return response.json();
-        })
-        .then(status => {
-            // Update connection status
-            if (!isConnected) {
-                showConnectionRestored();
-            }
-            
-            // Update temperature display
-            if (status.temperature.current !== null) {
-                currentTemp.textContent = status.temperature.current.toFixed(1);
-            } else {
-                currentTemp.textContent = '--.-';
-            }
-            
-            // Update humidity display
-            if (status.humidity.current !== null) {
-                currentHumidity.textContent = status.humidity.current.toFixed(1);
-            } else {
-                currentHumidity.textContent = '--.-';
-            }
-            
-            // Update heater status indicators
-            updateHeaterStatus(heater1Indicator, status.temperature.heater1_status);
-            updateHeaterStatus(heater2Indicator, status.temperature.heater2_status);
-            
-            // Update humidifier status indicator
-            updateHeaterStatus(humidifierIndicator, status.humidity.humidifier_status);
-            
-            // Update safety status
-            if (status.temperature.safety_triggered) {
-                safetyIndicator.textContent = 'TRIGGERED';
-                safetyIndicator.className = 'danger';
-            } else {
-                safetyIndicator.textContent = 'Normal';
-                safetyIndicator.className = '';
-            }
-            
-            // Update toggle switches if they don't match the server state
-            if (tempControlToggle.checked !== status.temperature.control_enabled) {
-                tempControlToggle.checked = status.temperature.control_enabled;
-            }
-            
-            if (humidityControlToggle.checked !== status.humidity.control_enabled) {
-                humidityControlToggle.checked = status.humidity.control_enabled;
-            }
-            
-            // Update last update time
-            lastUpdateTime = Date.now();
-        })
-        .catch(error => {
-            console.error('Error updating status:', error);
-            showConnectionError();
-        });
-}
-
-// Update heater/humidifier status display
-function updateHeaterStatus(element, isOn) {
-    if (isOn) {
-        element.textContent = 'ON';
-        element.className = 'on';
+// Update status display
+function updateStatusDisplay(status) {
+    // Update temperature display
+    if (status.temperature.current !== null) {
+        currentTemp.textContent = `${status.temperature.current.toFixed(1)} °F`;
     } else {
-        element.textContent = 'OFF';
-        element.className = 'off';
+        currentTemp.textContent = 'Sensor Error';
+        currentTemp.classList.add('status-danger');
     }
+
+    // Update humidity display
+    if (status.humidity.current !== null) {
+        currentHumidity.textContent = `${status.humidity.current.toFixed(1)} %`;
+    } else {
+        currentHumidity.textContent = 'Sensor Error';
+        currentHumidity.classList.add('status-danger');
+    }
+
+    // Update heater status
+    heater1Status.textContent = status.temperature.heater1_status ? 'ON' : 'OFF';
+    heater1Status.className = 'status ' + (status.temperature.heater1_status ? 'status-on' : 'status-off');
+    
+    heater2Status.textContent = status.temperature.heater2_status ? 'ON' : 'OFF';
+    heater2Status.className = 'status ' + (status.temperature.heater2_status ? 'status-on' : 'status-off');
+    
+    // Update humidifier status
+    humidifierStatus.textContent = status.humidity.humidifier_status ? 'ON' : 'OFF';
+    humidifierStatus.className = 'status ' + (status.humidity.humidifier_status ? 'status-on' : 'status-off');
+    
+    // Update safety status
+    if (status.temperature.safety_triggered) {
+        tempSafetyStatus.textContent = 'SAFETY CUTOFF';
+        tempSafetyStatus.className = 'status status-danger';
+    } else {
+        tempSafetyStatus.textContent = 'OK';
+        tempSafetyStatus.className = 'status status-on';
+    }
+    
+    // Update sensor status
+    if (status.temperature.sensor_failure || status.humidity.sensor_failure) {
+        sensorStatus.textContent = 'FAILURE';
+        sensorStatus.className = 'status status-danger';
+    } else {
+        sensorStatus.textContent = 'OK';
+        sensorStatus.className = 'status status-on';
+    }
+    
+    // Update overheat status
+    if (status.temperature.overheat_triggered) {
+        overheatStatus.textContent = 'OVERHEATING';
+        overheatStatus.className = 'status status-danger';
+    } else {
+        overheatStatus.textContent = 'OK';
+        overheatStatus.className = 'status status-on';
+    }
+    
+    // Update last update time
+    const date = new Date();
+    lastUpdate.textContent = date.toLocaleTimeString();
+    
+    // Update toggle switches
+    tempControlToggle.checked = status.temperature.is_running;
+    humidityControlToggle.checked = status.humidity.is_running;
 }
 
-// Show connection error
-function showConnectionError() {
-    isConnected = false;
-    connectionStatus.textContent = 'Disconnected';
-    connectionStatus.className = 'disconnected';
-    connectionStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Disconnected';
+// Fetch status from API
+function fetchStatus() {
+    fetch('/api/status')
+        .then(response => response.json())
+        .then(status => {
+            updateStatusDisplay(status);
+        })
+        .catch(error => {
+            console.error('Error fetching status:', error);
+        });
 }
 
-// Show connection restored
-function showConnectionRestored() {
-    isConnected = true;
-    connectionStatus.textContent = 'Connected';
-    connectionStatus.className = 'connected';
-    connectionStatus.innerHTML = '<i class="fas fa-wifi"></i> Connected';
+// Control temperature system
+function controlTemperature(action) {
+    fetch(`/api/control/temperature/${action}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log(data.message);
+                fetchStatus();
+            } else {
+                console.error(data.message);
+                alert(`Error: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error controlling temperature:', error);
+        });
 }
 
-// Set up event listeners
-function setupEventListeners() {
-    // Temperature control toggle
-    tempControlToggle.addEventListener('change', function() {
-        const isEnabled = this.checked;
-        
-        fetch('/api/control', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                temp_control: isEnabled
-            })
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to update temperature control');
-            }
-            return response.json();
-        })
+// Control humidity system
+function controlHumidity(action) {
+    fetch(`/api/control/humidity/${action}`)
+        .then(response => response.json())
         .then(data => {
-            console.log('Temperature control updated:', isEnabled ? 'enabled' : 'disabled');
+            if (data.success) {
+                console.log(data.message);
+                fetchStatus();
+            } else {
+                console.error(data.message);
+                alert(`Error: ${data.message}`);
+            }
         })
         .catch(error => {
-            console.error('Error updating temperature control:', error);
-            // Revert toggle if there was an error
-            this.checked = !isEnabled;
+            console.error('Error controlling humidity:', error);
         });
-    });
-    
-    // Humidity control toggle
-    humidityControlToggle.addEventListener('change', function() {
-        const isEnabled = this.checked;
-        
-        fetch('/api/control', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                humidity_control: isEnabled
-            })
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to update humidity control');
-            }
-            return response.json();
-        })
+}
+
+// Control all systems
+function controlAll(action) {
+    fetch(`/api/control/all/${action}`)
+        .then(response => response.json())
         .then(data => {
-            console.log('Humidity control updated:', isEnabled ? 'enabled' : 'disabled');
+            if (data.success) {
+                console.log(data.message);
+                fetchStatus();
+            } else {
+                console.error(data.message);
+                alert(`Error: ${data.message}`);
+            }
         })
         .catch(error => {
-            console.error('Error updating humidity control:', error);
-            // Revert toggle if there was an error
-            this.checked = !isEnabled;
+            console.error('Error controlling systems:', error);
         });
-    });
-    
-    // Save temperature settings
-    saveTempSettings.addEventListener('click', function() {
-        const settings = {
-            temp_target: parseFloat(tempTarget.value),
-            temp_min: parseFloat(tempMin.value),
-            temp_max: parseFloat(tempMax.value),
-            temp_safety: parseFloat(tempSafety.value)
-        };
-        
-        // Validate settings
-        if (settings.temp_min >= settings.temp_max) {
-            alert('Minimum temperature must be less than maximum temperature');
-            return;
-        }
-        
-        if (settings.temp_max >= settings.temp_safety) {
-            alert('Maximum temperature must be less than safety cutoff temperature');
-            return;
-        }
-        
-        if (settings.temp_target < settings.temp_min || settings.temp_target > settings.temp_max) {
-            alert('Target temperature must be between minimum and maximum temperature');
-            return;
-        }
-        
-        // Send settings to server
-        fetch('/api/settings', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(settings)
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to save temperature settings');
-            }
-            return response.json();
-        })
-        .then(data => {
-            alert('Temperature settings saved successfully');
-        })
-        .catch(error => {
-            console.error('Error saving temperature settings:', error);
-            alert('Failed to save temperature settings');
-        });
-    });
-    
-    // Save humidity settings
-    saveHumiditySettings.addEventListener('click', function() {
-        const settings = {
-            humidity_target: parseFloat(humidityTarget.value),
-            humidity_min: parseFloat(humidityMin.value),
-            humidity_max: parseFloat(humidityMax.value)
-        };
-        
-        // Validate settings
-        if (settings.humidity_min >= settings.humidity_max) {
-            alert('Minimum humidity must be less than maximum humidity');
-            return;
-        }
-        
-        if (settings.humidity_target < settings.humidity_min || settings.humidity_target > settings.humidity_max) {
-            alert('Target humidity must be between minimum and maximum humidity');
-            return;
-        }
-        
-        // Send settings to server
-        fetch('/api/settings', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(settings)
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to save humidity settings');
-            }
-            return response.json();
-        })
-        .then(data => {
-            alert('Humidity settings saved successfully');
-        })
-        .catch(error => {
-            console.error('Error saving humidity settings:', error);
-            alert('Failed to save humidity settings');
-        });
-    });
-    
-    // Reset system
-    resetSystem.addEventListener('click', function() {
-        if (confirm('Are you sure you want to reset the system? This will stop all control systems and restart them.')) {
-            fetch('/api/reset', {
-                method: 'POST'
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Failed to reset system');
-                }
-                return response.json();
-            })
+}
+
+// Reset system
+function resetSystem() {
+    if (confirm('Are you sure you want to reset the system? This will stop all controls and restore default settings.')) {
+        fetch('/api/reset')
+            .then(response => response.json())
             .then(data => {
-                alert('System reset successfully');
-                // Reload settings and status
-                loadSettings();
-                updateStatus();
+                if (data.success) {
+                    console.log(data.message);
+                    // Reload page to get updated settings
+                    location.reload();
+                } else {
+                    console.error(data.message);
+                    alert(`Error: ${data.message}`);
+                }
             })
             .catch(error => {
                 console.error('Error resetting system:', error);
-                alert('Failed to reset system');
             });
-        }
-    });
+    }
 }
 
-// Initialize when the page loads
-document.addEventListener('DOMContentLoaded', init);
-
-// Check connection status periodically
-setInterval(function() {
-    if (Date.now() - lastUpdateTime > 15000) {
-        showConnectionError();
+// Update temperature settings
+function updateTemperatureSettings(event) {
+    event.preventDefault();
+    
+    const settings = {
+        temperature: {
+            target: parseFloat(document.getElementById('temp-target').value),
+            min: parseFloat(document.getElementById('temp-min').value),
+            max: parseFloat(document.getElementById('temp-max').value),
+            safety_cutoff: parseFloat(document.getElementById('temp-safety').value),
+            sensor_timeout: parseInt(document.getElementById('sensor-timeout').value)
+        }
+    };
+    
+    // Validate settings
+    if (settings.temperature.min >= settings.temperature.max) {
+        alert('Minimum temperature must be less than maximum temperature.');
+        return;
     }
-}, 5000);
+    
+    if (settings.temperature.target < settings.temperature.min || settings.temperature.target > settings.temperature.max) {
+        alert('Target temperature must be within the minimum and maximum range.');
+        return;
+    }
+    
+    if (settings.temperature.safety_cutoff <= settings.temperature.max) {
+        alert('Safety cutoff temperature must be greater than maximum temperature.');
+        return;
+    }
+    
+    if (settings.temperature.sensor_timeout < 5) {
+        alert('Sensor timeout must be at least 5 seconds.');
+        return;
+    }
+    
+    // Send settings to API
+    fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(settings)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Temperature settings updated successfully.');
+                // Update display
+                document.getElementById('target-temp').textContent = settings.temperature.target;
+                document.getElementById('min-temp').textContent = settings.temperature.min;
+                document.getElementById('max-temp').textContent = settings.temperature.max;
+                document.getElementById('safety-cutoff').textContent = settings.temperature.safety_cutoff;
+                fetchStatus();
+            } else {
+                console.error(data.message);
+                alert(`Error: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error updating temperature settings:', error);
+        });
+}
+
+// Update humidity settings
+function updateHumiditySettings(event) {
+    event.preventDefault();
+    
+    const settings = {
+        humidity: {
+            target: parseInt(document.getElementById('humidity-target').value),
+            min: parseInt(document.getElementById('humidity-min').value),
+            max: parseInt(document.getElementById('humidity-max').value)
+        }
+    };
+    
+    // Validate settings
+    if (settings.humidity.min >= settings.humidity.max) {
+        alert('Minimum humidity must be less than maximum humidity.');
+        return;
+    }
+    
+    if (settings.humidity.target < settings.humidity.min || settings.humidity.target > settings.humidity.max) {
+        alert('Target humidity must be within the minimum and maximum range.');
+        return;
+    }
+    
+    // Send settings to API
+    fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(settings)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Humidity settings updated successfully.');
+                // Update display
+                document.getElementById('target-humidity').textContent = settings.humidity.target;
+                document.getElementById('min-humidity').textContent = settings.humidity.min;
+                document.getElementById('max-humidity').textContent = settings.humidity.max;
+                fetchStatus();
+            } else {
+                console.error(data.message);
+                alert(`Error: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error updating humidity settings:', error);
+        });
+}
+
+// Event Listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Initial status fetch
+    fetchStatus();
+    
+    // Set up periodic status updates (every 5 seconds)
+    setInterval(fetchStatus, 5000);
+    
+    // Temperature control toggle
+    tempControlToggle.addEventListener('change', () => {
+        if (tempControlToggle.checked) {
+            controlTemperature('start');
+        } else {
+            controlTemperature('stop');
+        }
+    });
+    
+    // Humidity control toggle
+    humidityControlToggle.addEventListener('change', () => {
+        if (humidityControlToggle.checked) {
+            controlHumidity('start');
+        } else {
+            controlHumidity('stop');
+        }
+    });
+    
+    // Start all button
+    startAllBtn.addEventListener('click', () => {
+        controlAll('start');
+    });
+    
+    // Stop all button
+    stopAllBtn.addEventListener('click', () => {
+        controlAll('stop');
+    });
+    
+    // Reset button
+    resetBtn.addEventListener('click', resetSystem);
+    
+    // Temperature settings form
+    tempSettingsForm.addEventListener('submit', updateTemperatureSettings);
+    
+    // Humidity settings form
+    humiditySettingsForm.addEventListener('submit', updateHumiditySettings);
+});
